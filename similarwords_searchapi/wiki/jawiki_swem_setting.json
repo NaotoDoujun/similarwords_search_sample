@@ -1,7 +1,7 @@
 {
   "analysis": {
     "analyzer": {
-      "wikipedia_analyzer": {
+      "wikipedia_swem_analyzer": {
         "type": "custom",
         "char_filter": [
           "icu_normalizer"

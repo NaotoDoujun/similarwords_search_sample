@@ -9,7 +9,7 @@
     },
     "category": {
       "type": "text",
-      "analyzer": "wikipedia_analyzer",
+      "analyzer": "wikipedia_swem_analyzer",
       "fielddata": true
     },
     "outgoing_link": {
@@ -17,8 +17,12 @@
     },
     "text": {
       "type": "text",
-      "analyzer": "wikipedia_analyzer",
+      "analyzer": "wikipedia_swem_analyzer",
       "fielddata": true
+    },
+    "text_vector": {
+      "type": "dense_vector",
+      "dims": 200
     },
     "timestamp": {
       "type": "date",
@@ -26,7 +30,7 @@
     },
     "title": {
       "type": "text",
-      "analyzer": "wikipedia_analyzer",
+      "analyzer": "wikipedia_swem_analyzer",
       "fielddata": true,
       "fields": {
         "keyword": {
