@@ -1,0 +1,56 @@
+version: '3.7'
+volumes:
+  elastic:
+    driver: 'local'
+
+services:
+  similarwords_searchapi:
+    build:
+      context: ./similarwords_searchapi
+      dockerfile: ./Dockerfile
+    image: similarwordssearchapi
+    container_name: similarwordssearchapi
+    environment:
+      - TZ=Asia/Tokyo
+    ports:
+      - "8000:8000"
+    depends_on:
+      - elasticsearch
+    volumes:
+      - ./similarwords_searchapi:/app
+  elasticsearch:
+    build:
+      context: ./elasticsearch
+      dockerfile: ./Dockerfile
+    image: elasticsearch-kuromoji:8.2.1
+    container_name: elasticsearch
+    environment:
+      - TZ=Asia/Tokyo
+      - ES_JAVA_OPTS=-Xms512m -Xmx1024m
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - bootstrap.memory_lock=true
+      - http.cors.enabled=true
+      - http.cors.allow-origin="*"
+      - http.cors.allow-credentials=true
+      - http.cors.allow-methods=OPTIONS, HEAD, GET, POST, PUT, DELETE
+      - http.cors.allow-headers=X-Requested-With, X-Auth-Token, Content-Type, Content-Length, Authorization, Access-Control-Allow-Headers, Accept, x-elastic-client-meta
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 9200:9200
+      - 9300:9300
+    volumes:
+      - elastic:/usr/share/elasticsearch/data
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:8.2.1
+    ports:
+      - 5601:5601
+    depends_on:
+      - elasticsearch
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - I18N_LOCALE=ja-JP
