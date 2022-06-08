@@ -1,7 +1,7 @@
 import MeCab
 import numpy as np
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
 from typing import Dict
 from pydantic import BaseModel
@@ -17,6 +17,7 @@ es = Elasticsearch("http://elasticsearch:9200", request_timeout=100)
 target_index = "jawiki-swem"
 similarwordbot = slackweb.Slack(url="http://mattermost:8065/hooks/cmajtntp17gq3ktu3jwy6q3yic")
 recommendbot = slackweb.Slack(url="http://mattermost:8065/hooks/p6t56kkejbn4iceds7a9999xpr")
+max_size = 2
 
 class Item(BaseModel):
     text: str
@@ -96,60 +97,72 @@ def search_similarwords(item: Item):
             row[0].strip('[').strip(']')
             for row in similars
         ]
-        querywords = similarwords[0:2] if len(similars) > 1 else similarwords[0:1]
-        querywords.insert(0, item.text)
-        responses = [
-        {
-            "query": word,
-            "responses": es.search(
-                index=target_index,
-                size=2,
-                query={
-                    "multi_match": {
-                        "fields": [ "title", "text" ],
-                        "query": word
-                    }
-                }
-            )
-        }
-        for word in querywords
-        ]
 
-        results = [
-        {
-            'query': response['query'],
-            'title': row['_source']['title'], 
-            'text': row['_source']['text'], 
-            'score': row['_score'],
-        }
-        for response in responses
-            for row in response['responses']['hits']['hits']
-        ]
+        if item.text in similarwords:
+            similarwords.remove(item.text)
 
-        if len(results) > 0:
-            attachments = [
-                {
-                "mrkdwn_in": ["text"],
-                    "color": "#36a64f",
-                    "pretext": "",
-                    "author_name": "similarwordbot",
-                    "title": "Recommends from Wikipedia",
-                    "text": "search word [{}]".format(item.text),
-                    "fields": [
-                        {
-                            "title": "{} (query:{} score:{})".format(row['title'], row['query'], row['score']),
-                            "value": row['text'],
-                            "short": "false"
+        unique_similarwords = []
+        for similarword in similarwords:
+            if similarword not in unique_similarwords:
+                unique_similarwords.append(similarword)
+
+        if len(unique_similarwords) > 0:
+            querywords = unique_similarwords[0:max_size] if len(unique_similarwords) > 1 else unique_similarwords[0:1]
+            querywords.insert(0, item.text)
+            responses = [
+            {
+                "query": word,
+                "responses": es.search(
+                    index=target_index,
+                    size=max_size,
+                    query={
+                        "multi_match": {
+                            "fields": [ "title", "text" ],
+                            "query": word
                         }
-                        for row in results
-                    ]
-                }
+                    }
+                )
+            }
+            for word in querywords
             ]
-            similarwordbot.notify(attachments=attachments)
 
-        return results
+            results = [
+            {
+                'query': response['query'],
+                'title': row['_source']['title'], 
+                'text': row['_source']['text'], 
+                'score': row['_score'],
+            }
+            for response in responses
+                for row in response['responses']['hits']['hits']
+            ]
+
+            if len(results) > 0:
+                attachments = [
+                    {
+                    "mrkdwn_in": ["text"],
+                        "color": "#36a64f",
+                        "pretext": "",
+                        "author_name": "similarwordbot",
+                        "title": "Similar Words Search Result",
+                        "text": "search word [{}]".format(item.text),
+                        "fields": [
+                            {
+                                "title": "{} (query:{} score:{})".format(row['title'], row['query'], row['score']),
+                                "value": row['text'],
+                                "short": "false"
+                            }
+                            for row in results
+                        ]
+                    }
+                ]
+                similarwordbot.notify(attachments=attachments)
+
+            return results
+        else:
+            raise HTTPException(status_code=404, detail="Similor words not found")
     else:
-        return {"Result": "nothing similar words..."}
+        raise HTTPException(status_code=404, detail="Similor words not found")
 
 @app.post("/recommends/")
 def propose_recommend(slackPost: Dict):
@@ -166,7 +179,7 @@ def propose_recommend(slackPost: Dict):
     }
     response = es.search(
         index=target_index,
-        size=2,
+        size=max_size,
         query=script_query
     )
 
@@ -199,8 +212,9 @@ def propose_recommend(slackPost: Dict):
             }
         ]
         recommendbot.notify(attachments=attachments)
-
-    return results
+        return results
+    else:
+        raise HTTPException(status_code=404, detail="recommends not found")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
