@@ -7,6 +7,7 @@ from typing import Dict
 from pydantic import BaseModel
 from gensim.models import KeyedVectors
 from elasticsearch import Elasticsearch
+import slackweb
 
 app = FastAPI()
 w2v_model_path = "/app/wiki/entity_vector.model.bin"
@@ -14,6 +15,8 @@ print('loading w2v model file on memory...')
 w2v_model = KeyedVectors.load_word2vec_format(w2v_model_path, binary=True)
 es = Elasticsearch("http://elasticsearch:9200", request_timeout=100)
 target_index = "jawiki-swem"
+similarwordbot = slackweb.Slack(url="http://mattermost:8065/hooks/cmajtntp17gq3ktu3jwy6q3yic")
+recommendbot = slackweb.Slack(url="http://mattermost:8065/hooks/p6t56kkejbn4iceds7a9999xpr")
 
 class Item(BaseModel):
     text: str
@@ -123,6 +126,27 @@ def search_similarwords(item: Item):
             for row in response['responses']['hits']['hits']
         ]
 
+        if len(results) > 0:
+            attachments = [
+                {
+                "mrkdwn_in": ["text"],
+                    "color": "#36a64f",
+                    "pretext": "",
+                    "author_name": "similarwordbot",
+                    "title": "Recommends from Wikipedia",
+                    "text": "search word [{}]".format(item.text),
+                    "fields": [
+                        {
+                            "title": "{} (query:{} score:{})".format(row['title'], row['query'], row['score']),
+                            "value": row['text'],
+                            "short": "false"
+                        }
+                        for row in results
+                    ]
+                }
+            ]
+            similarwordbot.notify(attachments=attachments)
+
         return results
     else:
         return {"Result": "nothing similar words..."}
@@ -146,7 +170,7 @@ def propose_recommend(slackPost: Dict):
         query=script_query
     )
 
-    result = [
+    results = [
         {
             'title': row['_source']['title'], 
             'text': row['_source']['text'], 
@@ -154,7 +178,29 @@ def propose_recommend(slackPost: Dict):
         }
         for row in response['hits']['hits']
     ]
-    return result
+
+    if len(results) > 0:
+        attachments = [
+            {
+            "mrkdwn_in": ["text"],
+                "color": "#36a64f",
+                "pretext": "",
+                "author_name": "recommendbot",
+                "title": "Recommends from Wikipedia",
+                "text": "{} said [{}]".format(data['user_name'], data['text']),
+                "fields": [
+                    {
+                        "title": "{} (score:{})".format(row['title'], row['score']),
+                        "value": row['text'],
+                        "short": "false"
+                    }
+                    for row in results
+                ]
+            }
+        ]
+        recommendbot.notify(attachments=attachments)
+
+    return results
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
