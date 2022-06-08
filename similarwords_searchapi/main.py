@@ -91,77 +91,80 @@ def read_root():
 
 @app.post("/similarwords/")
 def search_similarwords(item: Item):
-    similars = w2v_model.most_similar(u'[{}]'.format(item.text))
-    if len(similars) > 0:
-        similarwords = [
-            row[0].strip('[').strip(']')
-            for row in similars
-        ]
-
-        if item.text in similarwords:
-            similarwords.remove(item.text)
-
-        unique_similarwords = []
-        for similarword in similarwords:
-            if similarword not in unique_similarwords:
-                unique_similarwords.append(similarword)
-
-        if len(unique_similarwords) > 0:
-            querywords = unique_similarwords[0:max_size] if len(unique_similarwords) > 1 else unique_similarwords[0:1]
-            querywords.insert(0, item.text)
-            responses = [
-            {
-                "query": word,
-                "responses": es.search(
-                    index=target_index,
-                    size=max_size,
-                    query={
-                        "multi_match": {
-                            "fields": [ "title", "text" ],
-                            "query": word
-                        }
-                    }
-                )
-            }
-            for word in querywords
+    try:
+        similars = w2v_model.most_similar(u'[{}]'.format(item.text))
+        if len(similars) > 0:
+            similarwords = [
+                row[0].strip('[').strip(']')
+                for row in similars
             ]
 
-            results = [
-            {
-                'query': response['query'],
-                'title': row['_source']['title'], 
-                'text': row['_source']['text'], 
-                'score': row['_score'],
-            }
-            for response in responses
-                for row in response['responses']['hits']['hits']
-            ]
+            if item.text in similarwords:
+                similarwords.remove(item.text)
 
-            if len(results) > 0:
-                attachments = [
-                    {
-                    "mrkdwn_in": ["text"],
-                        "color": "#36a64f",
-                        "pretext": "",
-                        "author_name": "similarwordbot",
-                        "title": "Similar Words Search Result",
-                        "text": "search word [{}]".format(item.text),
-                        "fields": [
-                            {
-                                "title": "{} (query:{} score:{})".format(row['title'], row['query'], row['score']),
-                                "value": row['text'],
-                                "short": "false"
+            unique_similarwords = []
+            for similarword in similarwords:
+                if similarword not in unique_similarwords:
+                    unique_similarwords.append(similarword)
+
+            if len(unique_similarwords) > 0:
+                querywords = unique_similarwords[0:max_size] if len(unique_similarwords) > 1 else unique_similarwords[0:1]
+                querywords.insert(0, item.text)
+                responses = [
+                {
+                    "query": word,
+                    "responses": es.search(
+                        index=target_index,
+                        size=max_size,
+                        query={
+                            "multi_match": {
+                                "fields": [ "title", "text" ],
+                                "query": word
                             }
-                            for row in results
-                        ]
-                    }
+                        }
+                    )
+                }
+                for word in querywords
                 ]
-                similarwordbot.notify(attachments=attachments)
 
-            return results
+                results = [
+                {
+                    'query': response['query'],
+                    'title': row['_source']['title'], 
+                    'text': row['_source']['text'], 
+                    'score': row['_score'],
+                }
+                for response in responses
+                    for row in response['responses']['hits']['hits']
+                ]
+
+                if len(results) > 0:
+                    attachments = [
+                        {
+                        "mrkdwn_in": ["text"],
+                            "color": "#36a64f",
+                            "pretext": "",
+                            "author_name": "similarwordbot",
+                            "title": "Similar Words Search Result",
+                            "text": "search word [{}]".format(item.text),
+                            "fields": [
+                                {
+                                    "title": "{} (query:{} score:{})".format(row['title'], row['query'], row['score']),
+                                    "value": row['text'],
+                                    "short": "false"
+                                }
+                                for row in results
+                            ]
+                        }
+                    ]
+                    similarwordbot.notify(attachments=attachments)
+
+                return results
+            else:
+                raise HTTPException(status_code=404, detail="Similor words not found")
         else:
             raise HTTPException(status_code=404, detail="Similor words not found")
-    else:
+    except:
         raise HTTPException(status_code=404, detail="Similor words not found")
 
 @app.post("/recommends/")
