@@ -1,7 +1,7 @@
 # similarwords_search_sample
 
 ## download w2v model
-Go http://www.cl.ecei.tohoku.ac.jp/~m-suzuki/jawiki_vector/ and download 20170201.tar.bz2  
+Go http://www.cl.ecei.tohoku.ac.jp/~m-suzuki/jawiki_vector/ and download [20170201.tar.bz2](http://www.cl.ecei.tohoku.ac.jp/~m-suzuki/jawiki_vector/data/20170201.tar.bz2)  
 after done, decompress it n put 'entity_vector.model.bin' under 'similarwords_searchapi/wiki'
 
 ## Run containers
