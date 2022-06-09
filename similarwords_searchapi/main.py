@@ -1,6 +1,7 @@
 import MeCab
 import numpy as np
 import uvicorn
+import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
 from typing import Dict
@@ -10,13 +11,13 @@ from elasticsearch import Elasticsearch
 import slackweb
 
 app = FastAPI()
+logger = logging.getLogger('uvicorn')
 w2v_model_path = "/app/wiki/entity_vector.model.bin"
-print('loading w2v model file on memory...')
 w2v_model = KeyedVectors.load_word2vec_format(w2v_model_path, binary=True)
 es = Elasticsearch("http://elasticsearch:9200", request_timeout=100)
 target_index = "jawiki-swem"
-similarwordbot = slackweb.Slack(url="http://mattermost:8065/hooks/cmajtntp17gq3ktu3jwy6q3yic")
-recommendbot = slackweb.Slack(url="http://mattermost:8065/hooks/p6t56kkejbn4iceds7a9999xpr")
+similarwordbot_url = "http://mattermost:8065/hooks/uysbwqyteirxpy9co96mwk1tty"
+recommendbot_url = "http://mattermost:8065/hooks/xsugb5pke7yfbg8jf88hx4ieua"
 max_size = 2
 
 class Item(BaseModel):
@@ -139,33 +140,38 @@ def search_similarwords(item: Item):
                 ]
 
                 if len(results) > 0:
-                    attachments = [
-                        {
-                        "mrkdwn_in": ["text"],
-                            "color": "#36a64f",
-                            "pretext": "",
-                            "author_name": "similarwordbot",
-                            "title": "Similar Words Search Result",
-                            "text": "search word [{}]".format(item.text),
-                            "fields": [
-                                {
-                                    "title": "{} (query:{} score:{})".format(row['title'], row['query'], row['score']),
-                                    "value": row['text'],
-                                    "short": "false"
-                                }
-                                for row in results
-                            ]
-                        }
-                    ]
-                    similarwordbot.notify(attachments=attachments)
+                    try:
+                        attachments = [
+                            {
+                            "mrkdwn_in": ["text"],
+                                "color": "#36a64f",
+                                "pretext": "",
+                                "author_name": "similarwordbot",
+                                "title": "Similar Words Search Result",
+                                "text": "search word [{}]".format(item.text),
+                                "fields": [
+                                    {
+                                        "title": "{} (query:{} score:{})".format(row['title'], row['query'], row['score']),
+                                        "value": row['text'],
+                                        "short": "false"
+                                    }
+                                    for row in results
+                                ]
+                            }
+                        ]
+                        bot = slackweb.Slack(url=similarwordbot_url)
+                        bot.notify(attachments=attachments)
+                    except:
+                        logger.warning("Similarword Bot notify error. Check url.")
+                        pass
 
                 return results
             else:
-                raise HTTPException(status_code=404, detail="Similor words not found")
+                raise HTTPException(status_code=404, detail="Similar words not found. (empty unique_similarwords)")
         else:
-            raise HTTPException(status_code=404, detail="Similor words not found")
+            raise HTTPException(status_code=404, detail="Similar words not found. (empty similars)")
     except:
-        raise HTTPException(status_code=404, detail="Similor words not found")
+        raise HTTPException(status_code=404, detail="Similar words not found. (except)")
 
 @app.post("/recommends/")
 def propose_recommend(slackPost: Dict):
@@ -196,28 +202,34 @@ def propose_recommend(slackPost: Dict):
     ]
 
     if len(results) > 0:
-        attachments = [
-            {
-            "mrkdwn_in": ["text"],
-                "color": "#36a64f",
-                "pretext": "",
-                "author_name": "recommendbot",
-                "title": "Recommends from Wikipedia",
-                "text": "{} said [{}]".format(data['user_name'], data['text']),
-                "fields": [
-                    {
-                        "title": "{} (score:{})".format(row['title'], row['score']),
-                        "value": row['text'],
-                        "short": "false"
-                    }
-                    for row in results
-                ]
-            }
-        ]
-        recommendbot.notify(attachments=attachments)
+        try:
+            attachments = [
+                {
+                "mrkdwn_in": ["text"],
+                    "color": "#36a64f",
+                    "pretext": "",
+                    "author_name": "recommendbot",
+                    "title": "Recommends from Wikipedia",
+                    "text": "{} said [{}]".format(data['user_name'], data['text']),
+                    "fields": [
+                        {
+                            "title": "{} (score:{})".format(row['title'], row['score']),
+                            "value": row['text'],
+                            "short": "false"
+                        }
+                        for row in results
+                    ]
+                }
+            ]
+            bot = slackweb.Slack(url=recommendbot_url)
+            bot.notify(attachments=attachments)
+        except:
+            logger.warning("Recommend Bot notify error. Check url.")
+            pass
+
         return results
     else:
-        raise HTTPException(status_code=404, detail="recommends not found")
+        raise HTTPException(status_code=404, detail="Recommends not found. (empty results)")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

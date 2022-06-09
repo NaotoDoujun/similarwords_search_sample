@@ -4,6 +4,11 @@ volumes:
     driver: 'local'
 
 services:
+  mattermost:
+    image: mattermost/mattermost-preview
+    container_name: mattermost
+    ports:
+      - "8065:8065"
   similarwords_searchapi:
     build:
       context: ./similarwords_searchapi
